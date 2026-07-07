@@ -1,0 +1,200 @@
+name: Daily Stats Snapshot
+
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    name: Snapshot Horizon stats
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect stats
+        id: snapshot
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = 'Fchat-Horizon';
+            const repo = 'Horizon';
+
+            const info = (await github.rest.repos.get({ owner, repo })).data;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100
+            });
+            const openPRs = (
+              await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100
+              })
+            ).length;
+            const contributors = await github.paginate(
+              github.rest.repos.listContributors,
+              { owner, repo, per_page: 100 }
+            );
+
+            // latest*.yml, *.blockmap, and *.zsync are fetched by the
+            // auto-updater on every update check; SHASUMS files are not
+            // downloads either. `downloads.total` includes them, everything
+            // else excludes them.
+            const isUpdaterMetadata = (name) =>
+              /\.(yml|blockmap|zsync)$/i.test(name) || /^SHASUMS/i.test(name);
+
+            const platformOf = (name) => {
+              const n = name.toLowerCase();
+              if (n.includes('win') || n.endsWith('.exe') || n.endsWith('.msi'))
+                return 'windows';
+              if (n.includes('mac') || n.includes('darwin') || n.endsWith('.dmg'))
+                return 'mac';
+              if (
+                n.includes('linux') ||
+                n.endsWith('.appimage') ||
+                n.endsWith('.deb') ||
+                n.endsWith('.rpm') ||
+                n.endsWith('.pacman') ||
+                n.endsWith('.tar.gz')
+              )
+                return 'linux';
+              return 'other';
+            };
+
+            const archOf = (name) => {
+              const n = name.toLowerCase();
+              if (/arm64|aarch64|[-_.]m1[-_.]/.test(n)) return 'arm64';
+              if (/x64|amd64|x86_64|intel/.test(n)) return 'x64';
+              if (/universal/.test(n)) return 'universal';
+              if (/ia32|i386|x86(?!_64)/.test(n)) return 'x86';
+              // No arch marker = electron-builder multi-arch bundle
+              // (verified: their sizes equal the sum of the arch-specific
+              // installers).
+              return 'universal';
+            };
+
+            const bump = (obj, key, n) => (obj[key] = (obj[key] ?? 0) + n);
+
+            let real = 0;
+            let total = 0;
+            const byPlatform = {};
+            const byArch = {};
+            const byExtension = {};
+            const byRelease = {};
+            for (const release of releases) {
+              for (const asset of release.assets) {
+                total += asset.download_count;
+                if (isUpdaterMetadata(asset.name)) continue;
+                real += asset.download_count;
+                const platform = platformOf(asset.name);
+                bump(byPlatform, platform, asset.download_count);
+                bump(byArch, archOf(asset.name), asset.download_count);
+                const ext =
+                  asset.name.match(/\.(tar\.gz|[A-Za-z0-9]+)$/)?.[1] ?? 'other';
+                bump(byExtension, ext, asset.download_count);
+                byRelease[release.tag_name] ??= { total: 0, byPlatform: {} };
+                byRelease[release.tag_name].total += asset.download_count;
+                bump(byRelease[release.tag_name].byPlatform, platform, asset.download_count);
+              }
+            }
+
+            const fs = require('fs');
+            const date = new Date().toISOString().slice(0, 10);
+
+            const snapshot = {
+              date,
+              repo: {
+                stars: info.stargazers_count,
+                forks: info.forks_count,
+                subscribers: info.subscribers_count,
+                openIssues: info.open_issues_count - openPRs,
+                openPRs,
+                contributors: contributors.length,
+                commits: contributors.reduce((sum, c) => sum + c.contributions, 0),
+                releases: releases.length
+              },
+              downloads: { real, total, byPlatform, byArch, byExtension, byRelease }
+            };
+
+            // One line per day; a re-run on the same day replaces that
+            // day's line instead of duplicating it.
+            const historyPath = 'data/history.ndjson';
+            const history = fs.existsSync(historyPath)
+              ? fs.readFileSync(historyPath, 'utf8').trim().split('\n').filter(Boolean)
+              : [];
+            const kept = history.filter((line) => JSON.parse(line).date !== date);
+            kept.push(JSON.stringify(snapshot));
+            fs.writeFileSync(historyPath, kept.join('\n') + '\n');
+
+            // Sparse series: only get a line on days the value changed.
+            const updateSparse = (file, key, value) => {
+              const lines = fs.existsSync(file)
+                ? fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean)
+                : [];
+              const last = lines.length ? JSON.parse(lines.at(-1))[key] : null;
+              if (last === value) return;
+              const keptLines = lines.filter((line) => JSON.parse(line).date !== date);
+              keptLines.push(JSON.stringify({ date, [key]: value }));
+              fs.writeFileSync(file, keptLines.join('\n') + '\n');
+            };
+            updateSparse('data/star-history.ndjson', 'stars', info.stargazers_count);
+            updateSparse('data/fork-history.ndjson', 'forks', info.forks_count);
+
+            // Release index for annotating graphs; regenerated every run.
+            const releaseMeta = releases
+              .map((r) => ({
+                tag: r.tag_name,
+                name: r.name,
+                publishedAt: r.published_at,
+                prerelease: r.prerelease
+              }))
+              .sort((a, b) => a.publishedAt.localeCompare(b.publishedAt));
+            fs.writeFileSync(
+              'data/releases.json',
+              JSON.stringify(releaseMeta, null, 2) + '\n'
+            );
+
+            const message =
+              real >= 1e6
+                ? `${(real / 1e6).toFixed(1)}M`
+                : real >= 1e3
+                  ? `${Math.round(real / 1e3)}k`
+                  : `${real}`;
+            fs.writeFileSync(
+              'badges/downloads.json',
+              JSON.stringify({
+                schemaVersion: 1,
+                label: 'downloads',
+                message,
+                color: 'brightgreen'
+              }) + '\n'
+            );
+
+            core.setOutput(
+              'summary',
+              `${date}: ${real.toLocaleString('en-US')} downloads, ` +
+                `${info.stargazers_count} stars`
+            );
+            core.notice(
+              `downloads real=${real} total=${total} stars=${info.stargazers_count}`
+            );
+
+      - name: Commit and push
+        env:
+          SUMMARY: ${{ steps.snapshot.outputs.summary }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m "stats: $SUMMARY"
+          git push
