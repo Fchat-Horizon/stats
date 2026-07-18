@@ -598,5 +598,11 @@
     "name": "Release v2.3.2",
     "publishedAt": "2026-07-13T17:22:13Z",
     "prerelease": false
+  },
+  {
+    "tag": "v2.3.3",
+    "name": "Release v2.3.3",
+    "publishedAt": "2026-07-17T18:10:38Z",
+    "prerelease": false
   }
 ]
