@@ -622,5 +622,11 @@
     "name": "Pre-release v2.4.0-beta.3",
     "publishedAt": "2026-09-27T21:16:08Z",
     "prerelease": true
+  },
+  {
+    "tag": "v2.4.0",
+    "name": "Release v2.4.0",
+    "publishedAt": "2026-10-02T13:23:55Z",
+    "prerelease": false
   }
 ]
