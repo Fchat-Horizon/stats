@@ -634,5 +634,17 @@
     "name": "Release v2.4.1",
     "publishedAt": "2026-10-06T18:42:08Z",
     "prerelease": false
+  },
+  {
+    "tag": "v2.4.2-beta.0",
+    "name": "Release v2.4.2-beta.0",
+    "publishedAt": "2026-10-13T13:45:40Z",
+    "prerelease": true
+  },
+  {
+    "tag": "v2.4.2-beta.1",
+    "name": "Release v2.4.2-beta.1",
+    "publishedAt": "2026-10-13T20:25:19Z",
+    "prerelease": true
   }
 ]
