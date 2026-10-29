@@ -670,5 +670,11 @@
     "name": "Release v2.4.4",
     "publishedAt": "2026-10-26T18:41:55Z",
     "prerelease": false
+  },
+  {
+    "tag": "v2.4.5",
+    "name": "Release v2.4.5",
+    "publishedAt": "2026-10-28T19:16:50Z",
+    "prerelease": false
   }
 ]
