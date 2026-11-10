@@ -682,5 +682,11 @@
     "name": "Pre-release v2.5.0-beta.0",
     "publishedAt": "2026-11-06T21:56:07Z",
     "prerelease": true
+  },
+  {
+    "tag": "v2.5.0-beta.1",
+    "name": "Release v2.5.0-beta.1",
+    "publishedAt": "2026-11-09T18:52:57Z",
+    "prerelease": true
   }
 ]
