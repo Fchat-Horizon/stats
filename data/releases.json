@@ -700,5 +700,11 @@
     "name": "Release v2.5.0",
     "publishedAt": "2026-11-16T18:12:47Z",
     "prerelease": false
+  },
+  {
+    "tag": "v2.5.1",
+    "name": "Release v2.5.1",
+    "publishedAt": "2026-11-18T09:42:37Z",
+    "prerelease": false
   }
 ]
